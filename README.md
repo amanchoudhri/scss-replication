@@ -1,4 +1,4 @@
-# scss-Replication
+# scss-replication
 
 Replication experiment and robustness analysis of a 2021 randomized controlled trial studying the Safe Communities Safe Schools (SCSS) educational intervention.
 This is my final project for Don Green's POLS GU4724 class on Randomized Experimentation at Columbia. 
