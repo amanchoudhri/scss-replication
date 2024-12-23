@@ -17,7 +17,6 @@ https://doi.org/10.3886/ICPSR37913.v1
 - `DS0002`: School-level attendance rates at baseline (year 0) and in year 2.
 - `DS0003`: School-level truancy rates at baseline (year 0) and in year 1.
 - `DS0004`: School-level truancy rates at baseline (year 0) and in year 2.
-- `DS0002`: School-level attendance rates at baseline (year 0) and in year 2.
 - `DS0005`: School-level year-1 suspension outcomes (in-school, out-of-school,
   and total suspension percentages).
 - `DS0006`: School-level year-2 suspension outcomes.

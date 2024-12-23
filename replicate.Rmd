@@ -1,0 +1,482 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Replication
+
+In this notebook, we replicate the **Impacts on Target Outcomes**
+section of the chosen paper. We restrict our view to the key outcomes of
+rates of attendance, truancy, and suspension, along with academic achievement
+as measured by reading and math scores on standardized examinations.
+
+```{r, message=F}
+# data loading utilities
+source("load.R")
+```
+
+## Randomization Check
+
+Load in baseline covariates about the schools and random assignments.
+```{r}
+school_df <- load_school_info()
+
+baseline_covariates <- c(
+  "FRL", "PUPTCH", "PCT_BL", "PCT_HS", "PCT_WH", 
+  "SMALLSCHOOL", "LARGESCHOOL", "GRDRNG_ELEM", "GRDRNG_HS"
+  )
+
+```
+
+```{r}
+library(modelsummary)
+
+to_display <- school_df %>% 
+  select(all_of(baseline_covariates)) %>%
+  rename(
+      "Proportion Eligible for Free/Reduced Lunch" = FRL,
+      "Student-Teacher Ratio" = PUPTCH,
+      "% Black" = PCT_BL,
+      "% Hispanic" = PCT_HS,
+      "% White" = PCT_WH,
+      "Small 6th and 7th Grades (less than 200 students)" = SMALLSCHOOL,
+      "Large 6th and 7th Grades (more than 700 students)" = LARGESCHOOL,
+      "Also an Elementary School" = GRDRNG_ELEM,
+      "Also a High School" = GRDRNG_HS,
+  )
+
+# Create the table object
+make_tbl <- function(output) {
+  datasummary_balance(
+    ~ 1,
+    data = to_display,
+    title = "Summary Statistics",
+    fmt = 3,   # number of decimal places
+    # notes = "Note: Standard deviations in parentheses.",
+    output = output
+  )
+}
+
+make_tbl("kableExtra")
+# make_tbl("doc/baseline_covariates.tex")
+```
+
+We'll perform a block balanced randomization check.
+
+```{r}
+baseline_covariates <- c(
+  "FRL", "PUPTCH", "PCT_BL", "PCT_HS", "PCT_WH", 
+  "SMALLSCHOOL", "LARGESCHOOL", "GRDRNG_ELEM", "GRDRNG_HS"
+  )
+formula <- as.formula(paste(
+  "TREATMENT ~", paste(baseline_covariates, collapse=" + "), " + factor(COHORT)"
+  ))
+
+g <- lm(formula, data=school_df)
+
+f_stat <- summary(g)$fstatistic
+p_val <- pf(f_stat["value"], f_stat["numdf"], f_stat["dendf"], lower.tail=FALSE)
+
+print(sprintf(
+    "Joint F-test of covariate balance: F(%d, %d) = %.3f (p = %.3f)",
+    f_stat["numdf"], 
+    f_stat["dendf"], 
+    f_stat["value"],
+    p_val
+))
+```
+
+Great! We can be reasonably confident that the randomization procedure was
+performed correctly then, and that there are no strange inaccuracies from the
+matching process.
+
+## School-Level: Attendance, Truancy, and Suspension
+
+Load in the data.
+```{r}
+# attendance, truancy, suspensions
+school_level_outcomes <- load_school_outcomes()
+```
+
+View a few random rows for clarity.
+
+\emph{Attendance} is measured as the total number of student days attended, divided by
+the total number of days school was in session. It's unclear exactly what this
+means, but we'll assume that this is the average attendance rate across all
+students in the school since all values are $< 1$.
+
+\emph{Truancy} is defined as the total number of student unexcused absences, divided by
+the total number of days school was in session. Again unclear, but we'll assume
+that this is the average truancy rate across all students in the school.
+
+\emph{Suspension rates} are defined as the number of suspensions divided by the
+total number of students in the school.
+
+```{r}
+set.seed(0527)
+# Rename columns for compact display:
+col_mapping <- c(
+  COHORT = "COHORT",
+  Z = "TREATMENT",
+  PID = "PID",
+  # Attendance years 0-2
+  A0 = "ATTEND_Y0",
+  A1 = "ATTEND_Y1", 
+  A2 = "ATTEND_Y2",
+  # Truancy years 0-2
+  T0 = "TRUANCY_Y0",
+  T1 = "TRUANCY_Y1",
+  T2 = "TRUANCY_Y2",
+  # Suspensions years 1-2
+  S_IN1 = "SUS_IN_SCH_YR1",
+  S_IN2 = "SUS_IN_SCH_YR2",
+  S_OUT1 = "SUS_OUT_SCH_YR1",
+  S_OUT2 = "SUS_OUT_SCH_YR2"
+)
+df_to_dply <- school_level_outcomes %>%
+  select(all_of(unname(col_mapping))) %>%
+  rename(!!!col_mapping)
+
+knitr::kable(
+  df_to_dply %>% sample_n(5),
+  digits=3,
+  caption="School-Level Outcome Information"
+  )
+```
+
+### Attendance
+First, we replicate their analysis on attendance. The authors run two separate
+models for each outcome variable, one for 1-year effects and one for 2-year
+effects.
+```{r}
+attendance <- load_school_level_outcome("attendance")
+
+formula <- as.formula(paste(
+  "ATTEND_Y1 ~",
+  "TREATMENT + ATTEND_Y0 + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(paste0(baseline_covariates, "_Y1"), collapse=' + '),
+  "+",
+  paste(paste0('PAIR', 2:24), collapse=" + ")
+))
+
+g1 <- lm(formula, attendance)
+
+summary(g1)
+```
+Nothing significant achieved, matching the paper. We do obtain a different
+coefficient value, however, interestingly. Our $\beta_1 = 0.006$ and in the
+paper they obtain $0.01$, though this could be due to rounding to two
+significant figures in the display.
+
+```{r}
+formula <- as.formula(paste(
+  "ATTEND_Y2 ~",
+  "TREATMENT + ATTEND_Y0 + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(paste0(baseline_covariates, "_Y1"), collapse=' + '),
+  "+",
+  paste(paste0('PAIR', 2:24), collapse=" + ")
+))
+
+g2 <- lm(formula, attendance)
+
+summary(g2)
+```
+Again, we match the paper and find no significant effects.
+
+### Truancy
+
+```{r}
+truancy <- load_school_level_outcome("truancy")
+
+formula <- as.formula(paste(
+  "TRUANCY_Y1 ~",
+  "TREATMENT + TRUANCY_Y0 + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(paste0(baseline_covariates, "_Y1"), collapse=' + '),
+  "+",
+  paste(paste0('PAIR', 2:24), collapse=" + ")
+))
+
+g1 <- lm(formula, truancy)
+
+summary(g1)
+```
+
+```{r}
+truancy <- load_school_level_outcome("truancy")
+
+formula <- as.formula(paste(
+  "TRUANCY_Y2 ~",
+  "TREATMENT + TRUANCY_Y0 + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(paste0(baseline_covariates, "_Y1"), collapse=' + '),
+  "+",
+  paste(paste0('PAIR', 2:24), collapse=" + ")
+))
+
+g2 <- lm(formula, truancy)
+
+summary(g2)
+```
+### Curiosity: Correlation between Truancy and Attendance
+
+```{r}
+par(mfrow=c(1, 2))
+xlim <- c(0.8, 1.0)
+ylim <- c(0.0, 0.1)
+
+plot(
+  school_level_outcomes$ATTEND_Y1,
+  school_level_outcomes$TRUANCY_Y1,
+  xlab='Attendance, Year 1',
+  ylab='Truancy, Year 1',
+  xlim=xlim, ylim=ylim
+  )
+plot(
+  school_level_outcomes$ATTEND_Y2,
+  school_level_outcomes$TRUANCY_Y2,
+  xlab='Attendance, Year 2',
+  ylab='Truancy, Year 2',
+  xlim=xlim, ylim=ylim
+  )
+
+mtext(
+  "Correlation between Attendance and Truancy Outcomes",
+      side = 3,
+      line = - 2,
+      outer = TRUE
+      )
+```
+
+
+## Individual-Level: Achievement
+
+```{r}
+achievement <- load_achievement()
+```
+
+The researchers employed a matched-pairs experimental design with a waitlist
+control structure, divided into two cohorts. Cohort 1 data was measured during the 2016-17
+and 2017-18 school years; Cohort 2 started one year later, with outcome data measured
+therefore during the 2017-18 and 2018-19 school years.
+
+Observations were deleted "listwise" when outcome data were missing. No analysis of
+this attrition was performed in the paper.
+
+```{r}
+# col_mapping <- c(
+#   Z="TREATMENT",
+#   GRADE="GRADE",
+#   SCHOOL_YEAR="SCHOOL_YEAR",
+#   paste0(
+#     "Y",
+#     rep(1:2, each=2),
+#     c("BASELINE_R_Z", "BASELINE_M_Z")
+#   )
+# )
+knitr::kable(
+  achievement %>% sample_n(5),
+  digits=3,
+  caption="School-Level Outcome Information"
+  )
+```
+```{r}
+achievement %>% group_by(PID)
+```
+The researchers estimated two separate sets of models, one for reading scores and
+one for math scores.
+
+### Year 1 Models
+
+```{r}
+library(lme4)
+library(lmerTest)
+
+# In this regression, the authors do NOT consider grade range of the school.
+# It is unclear why not.
+indreg_school_covariates <- c(
+  "FRL", "PUPTCH", "PCT_BL", "PCT_HS", "PCT_WH", 
+  "SMALLSCHOOL", "LARGESCHOOL"
+)
+
+ind_covariates <- c("FEMALE", "WHITE")
+
+year_1_grade_7_df <- achievement %>%
+  filter(!is.na(Y1BASELINE_R_Z), !is.na(Y1BASELINE_M_Z), GRADE=="07") %>%
+  mutate(
+    Y_R=ZSCORE_R07,
+    Y_M=ZSCORE_M07
+    )
+
+formula <- as.formula(paste(
+  "Y_R ~",
+  "TREATMENT + Y1BASELINE_R_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1 <- lmer(formula, year_1_grade_7_df)
+summary(g1)
+```
+```{r}
+formula <- as.formula(paste(
+  "Y_M ~",
+  "TREATMENT + Y1BASELINE_M_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1_m_7 <- lmer(formula, year_1_grade_7_df)
+summary(g1_m_7)
+```
+
+```{r}
+year_1_grade_8_df <- achievement %>%
+  filter(!is.na(Y1BASELINE_R_Z), !is.na(Y1BASELINE_M_Z), GRADE=="08") %>%
+  mutate(
+    Y_R=ZSCORE_R08,
+    Y_M=ZSCORE_M08
+    )
+
+formula <- as.formula(paste(
+  "Y_R ~",
+  "TREATMENT + Y1BASELINE_R_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1_r_8 <- lmer(formula, year_1_grade_8_df)
+summary(g1_r_8)
+```
+```{r}
+formula <- as.formula(paste(
+  "Y_M ~",
+  "TREATMENT + Y1BASELINE_M_Z + ",
+  # postpend _Y1 since each covariate is measured in both years
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1_m_8 <- lmer(formula, year_1_grade_8_df)
+summary(g1_m_8)
+```
+### Year 2 Models
+
+```{r}
+schoolsize <- achievement %>%
+  filter(!is.na(LARGESCHOOL)) %>%
+  group_by(PID, TREATMENT) %>%
+  select(PID, TREATMENT, LARGESCHOOL) %>%
+  distinct()
+
+year_2_df <- achievement %>%
+  filter(!is.na(Y2BASELINE_R_Z), !is.na(Y2BASELINE_M_Z)) %>%
+  # only 8th graders in the sample
+  mutate(
+    Y_R=ZSCORE_R08,
+    Y_M=ZSCORE_M08
+    ) %>%
+  left_join(
+    schoolsize, by=c("PID", "TREATMENT")
+  ) %>%
+  select(-LARGESCHOOL.x) %>%  # remove the old NA column 
+  rename(LARGESCHOOL = LARGESCHOOL.y)  # rename the new column
+
+formula <- as.formula(paste(
+  "Y_R ~",
+  "TREATMENT + Y2BASELINE_R_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g2_r_8 <- lmer(formula, year_2_df)
+summary(g2_r_8)
+```
+```{r}
+formula <- as.formula(paste(
+  "Y_M ~",
+  "TREATMENT + Y2BASELINE_M_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g2_m_8 <- lmer(formula, year_2_df)
+summary(g2_m_8)
+```
+
+## Robustness to Model Specification
+
+In this section, we probe the analysis's robustness to model specification
+by grouping the grade analyses. We also hope to find alternative ways of analyzing
+the data to improve parameter standard errors.
+
+We'll try to estimate 1-year grade-specific effects together in one model,
+rather than two separate models.
+```{r}
+year_1_df <- achievement %>%
+  filter(!is.na(Y1BASELINE_R_Z), !is.na(Y1BASELINE_M_Z)) %>%
+  mutate(
+    Y_R=if_else(
+      GRADE=="07",
+      ZSCORE_R07,
+      ZSCORE_R08
+    ),
+    Y_M=if_else(
+      GRADE=="07",
+      ZSCORE_M07,
+      ZSCORE_M08
+    ),
+    GRADE_8 = (GRADE == "08")
+  )
+
+formula <- as.formula(paste(
+  "Y_R ~",
+  "TREATMENT:GRADE_8 + Y1BASELINE_R_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1 <- lmer(formula, year_1_df)
+summary(g1)
+```
+
+
+```{r}
+formula <- as.formula(paste(
+  "Y_M ~",
+  "TREATMENT:GRADE_8 + Y1BASELINE_M_Z + ",
+  paste(ind_covariates, collapse=" + "),
+  " + ",
+  paste(paste0('PAIR', 2:24), collapse=" + "),
+  "+",
+  paste(paste0("(1|", indreg_school_covariates, ")"), collapse=' + ')
+))
+
+g1_m <- lmer(formula, year_1_df)
+summary(g1_m)
+```
+

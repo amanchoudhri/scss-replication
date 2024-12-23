@@ -1,0 +1,25 @@
+\begin{table}[h]
+\centering
+\begin{talltblr}[         %% tabularray outer open
+caption={School-Level Covariate Summary Statistics},
+]                     %% tabularray outer close
+{                     %% tabularray inner open
+colspec={Q[]Q[]Q[]},
+column{1}={}{halign=l,},
+column{2,3}={}{halign=r,},
+}                     %% tabularray inner close
+\toprule
+& Mean & Std. Dev. \\ \midrule %% TinyTableHeader
+Proportion Eligible for Free/Reduced Lunch        & \num{0.596}  & \num{0.277}  \\
+Student-Teacher Ratio                             & \num{16.008} & \num{3.303}  \\
+\% Black                                         & \num{7.318}  & \num{9.763}  \\
+\% Hispanic                                      & \num{47.564} & \num{28.692} \\
+\% White                                         & \num{37.901} & \num{29.858} \\
+Small 6th and 7th Grades (less than 200 students) & \num{0.304}  & \num{0.465}  \\
+Large 6th and 7th Grades (more than 700 students) & \num{0.196}  & \num{0.401}  \\
+Also an Elementary School                         & \num{0.261}  & \num{0.444}  \\
+Also a High School                                & \num{0.087}  & \num{0.285}  \\
+\bottomrule
+\end{talltblr}
+\label{table:school_summary_stats}
+\end{table}
